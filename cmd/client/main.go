@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
 
 	"github.com/agustin-carnevale/pub-sub-rabbitMQ/internal/gamelogic"
 	"github.com/agustin-carnevale/pub-sub-rabbitMQ/internal/pubsub"
@@ -30,11 +28,48 @@ func main() {
 	queueName := routing.PauseKey + "." + username
 	pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, queueName, routing.PauseKey, 0)
 
-	// wait for ctrl+c
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
+	gameState := gamelogic.NewGameState(username)
 
-	fmt.Println("Peril client is shutting down..")
-	conn.Close()
+	for {
+
+		inputs := gamelogic.GetInput()
+
+		if len(inputs) == 0 {
+			continue
+		}
+
+		switch inputs[0] {
+		case "spawn":
+			err := gameState.CommandSpawn(inputs)
+			if err != nil {
+				fmt.Println("couldn't spawn unit:", err)
+			}
+		case "move":
+			_, err := gameState.CommandMove(inputs)
+			if err != nil {
+				fmt.Println("couldn't move unit:", err)
+			}
+			fmt.Println("Successful move!")
+		case "status":
+			gameState.CommandStatus()
+		case "help":
+			gamelogic.PrintClientHelp()
+
+		case "spam":
+			fmt.Println("Spamming not allowed yet!")
+		case "quit":
+			gamelogic.PrintQuit()
+			return
+		default:
+			fmt.Println("Sorry I couldn't process that instruction.. try again!")
+		}
+	}
+
+	// wait for ctrl+c
+	// signalChan := make(chan os.Signal, 1)
+	// signal.Notify(signalChan, os.Interrupt)
+	// <-signalChan
+
+	// fmt.Println("Peril client is shutting down..")
+	// conn.Close()
 }
