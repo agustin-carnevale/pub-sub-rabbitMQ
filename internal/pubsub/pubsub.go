@@ -3,8 +3,17 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+)
+
+type AckType int
+
+const (
+	Ack = iota
+	NackRequeue
+	NackDiscard
 )
 
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
@@ -44,7 +53,9 @@ func DeclareAndBind(
 		isExclusive = true
 	}
 
-	queue, err := ch.QueueDeclare(queueName, isDurableQueue, isAutoDelete, isExclusive, false, nil)
+	queue, err := ch.QueueDeclare(queueName, isDurableQueue, isAutoDelete, isExclusive, false, amqp.Table{
+		"x-dead-letter-exchange": "peril_dlx",
+	})
 	if err != nil {
 		ch.Close()
 		return nil, amqp.Queue{}, err
@@ -65,7 +76,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	simpleQueueType int, // an enum to represent "durable" or "transient"
-	handler func(T),
+	handler func(T) AckType,
 ) error {
 	channel, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
@@ -81,8 +92,18 @@ func SubscribeJSON[T any](
 		for msg := range c {
 			var msgBody T
 			json.Unmarshal(msg.Body, &msgBody)
-			handler(msgBody)
-			msg.Ack(false)
+			ackType := handler(msgBody)
+
+			if ackType == Ack {
+				msg.Ack(false)
+				fmt.Println("msg was: Acked")
+			} else if ackType == NackRequeue {
+				msg.Nack(false, true)
+				fmt.Println("msg was: NackRequeued")
+			} else if ackType == NackDiscard {
+				msg.Nack(false, false)
+				fmt.Println("msg was: NackDiscarded")
+			}
 		}
 	}(ch)
 
