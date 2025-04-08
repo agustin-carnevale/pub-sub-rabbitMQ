@@ -25,10 +25,20 @@ func main() {
 		log.Fatalln("error welcoming user")
 	}
 
-	queueName := routing.PauseKey + "." + username
-	pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, queueName, routing.PauseKey, 0)
+	// queueName := routing.PauseKey + "." + username
+	// pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, queueName, routing.PauseKey, 0)
 
 	gameState := gamelogic.NewGameState(username)
+	pauseQueueName := routing.PauseKey + "." + username
+	pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, pauseQueueName, routing.PauseKey, 0, handlerPause(gameState))
+	movesQueueName := routing.ArmyMovesPrefix + "." + username
+	movesKey := routing.ArmyMovesPrefix + ".*"
+	pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, movesQueueName, movesKey, 0, handlerMove(gameState))
+
+	movesCh, err := conn.Channel()
+	if err != nil {
+		log.Fatalln("error creating channel")
+	}
 
 	for {
 
@@ -45,11 +55,13 @@ func main() {
 				fmt.Println("couldn't spawn unit:", err)
 			}
 		case "move":
-			_, err := gameState.CommandMove(inputs)
+			move, err := gameState.CommandMove(inputs)
 			if err != nil {
 				fmt.Println("couldn't move unit:", err)
+			} else {
+				pubsub.PublishJSON(movesCh, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, move)
+				fmt.Println("Successful move!")
 			}
-			fmt.Println("Successful move!")
 		case "status":
 			gameState.CommandStatus()
 		case "help":
