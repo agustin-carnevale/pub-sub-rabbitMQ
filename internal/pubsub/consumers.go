@@ -1,7 +1,6 @@
 package pubsub
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
@@ -15,19 +14,6 @@ const (
 	NackRequeue
 	NackDiscard
 )
-
-func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
-
-	valBytes, err := json.Marshal(val)
-	if err != nil {
-		return err
-	}
-	err = ch.PublishWithContext(context.Background(), exchange, key, false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        valBytes,
-	})
-	return err
-}
 
 func DeclareAndBind(
 	conn *amqp.Connection,
@@ -92,6 +78,55 @@ func SubscribeJSON[T any](
 		for msg := range c {
 			var msgBody T
 			json.Unmarshal(msg.Body, &msgBody)
+			ackType := handler(msgBody)
+
+			if ackType == Ack {
+				msg.Ack(false)
+				fmt.Println("msg was: Acked")
+			} else if ackType == NackRequeue {
+				msg.Nack(false, true)
+				fmt.Println("msg was: NackRequeued")
+			} else if ackType == NackDiscard {
+				msg.Nack(false, false)
+				fmt.Println("msg was: NackDiscarded")
+			}
+		}
+	}(ch)
+
+	return nil
+}
+
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	simpleQueueType int, // an enum to represent "durable" or "transient"
+	handler func(T) AckType,
+) error {
+
+	channel, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
+	if err != nil {
+		fmt.Println("ERROR at SubscribeGob:", err)
+		return err
+	}
+
+	ch, err := channel.Consume(queue.Name, "", false, false, false, false, nil)
+	if err != nil {
+		fmt.Println("ERROR at SubscribeGob:", err)
+		return err
+	}
+
+	go func(c <-chan amqp.Delivery) {
+		for msg := range c {
+			var msgBody T
+			msgBody, err := decode[T](msg.Body)
+			if err != nil {
+				// continue ?
+				msg.Nack(false, false)
+				fmt.Println("msg was: NackDiscarded")
+			}
+
 			ackType := handler(msgBody)
 
 			if ackType == Ack {

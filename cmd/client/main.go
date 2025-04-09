@@ -45,7 +45,7 @@ func main() {
 		routing.WarRecognitionsPrefix,
 		routing.WarRecognitionsPrefix+".*",
 		1,
-		handlerWar(gameState),
+		handlerWar(gameState, publishCh),
 	)
 	if err != nil {
 		log.Fatalf("could not subscribe to war declarations: %v", err)

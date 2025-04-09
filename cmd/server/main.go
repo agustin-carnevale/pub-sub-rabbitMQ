@@ -25,10 +25,7 @@ func main() {
 		log.Fatalln("error creating rabbit channel")
 	}
 
-	// pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{
-	// 	IsPaused: true,
-	// })
-	pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, "game_logs", routing.GameLogSlug, 1)
+	pubsub.SubscribeGob(conn, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", 1, handlerLog())
 
 	gamelogic.PrintServerHelp()
 
