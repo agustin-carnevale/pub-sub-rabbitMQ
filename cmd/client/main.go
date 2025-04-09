@@ -28,16 +28,27 @@ func main() {
 	// queueName := routing.PauseKey + "." + username
 	// pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, queueName, routing.PauseKey, 0)
 
+	publishCh, err := conn.Channel()
+	if err != nil {
+		log.Fatalln("error creating channel")
+	}
+
 	gameState := gamelogic.NewGameState(username)
 	pauseQueueName := routing.PauseKey + "." + username
 	pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, pauseQueueName, routing.PauseKey, 0, handlerPause(gameState))
 	movesQueueName := routing.ArmyMovesPrefix + "." + username
 	movesKey := routing.ArmyMovesPrefix + ".*"
-	pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, movesQueueName, movesKey, 0, handlerMove(gameState))
-
-	movesCh, err := conn.Channel()
+	pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, movesQueueName, movesKey, 0, handlerMove(gameState, publishCh))
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.WarRecognitionsPrefix,
+		routing.WarRecognitionsPrefix+".*",
+		1,
+		handlerWar(gameState),
+	)
 	if err != nil {
-		log.Fatalln("error creating channel")
+		log.Fatalf("could not subscribe to war declarations: %v", err)
 	}
 
 	for {
@@ -59,7 +70,7 @@ func main() {
 			if err != nil {
 				fmt.Println("couldn't move unit:", err)
 			} else {
-				pubsub.PublishJSON(movesCh, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, move)
+				pubsub.PublishJSON(publishCh, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, move)
 				fmt.Println("Successful move!")
 			}
 		case "status":
