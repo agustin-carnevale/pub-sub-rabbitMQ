@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
+	"time"
 
 	"github.com/agustin-carnevale/pub-sub-rabbitMQ/internal/gamelogic"
 	"github.com/agustin-carnevale/pub-sub-rabbitMQ/internal/pubsub"
@@ -79,7 +81,24 @@ func main() {
 			gamelogic.PrintClientHelp()
 
 		case "spam":
-			fmt.Println("Spamming not allowed yet!")
+			// fmt.Println("Spamming not allowed yet!")
+			if len(inputs) != 2 {
+				fmt.Println("Invalid number of inputs, usage: spam <n>")
+				continue
+			}
+			n, err := strconv.Atoi(inputs[1])
+			if err != nil {
+				fmt.Println("Invalid input, usage: spam <n> where n is an integer")
+				continue
+			}
+			for i := 0; i < n; i++ {
+				msg := gamelogic.GetMaliciousLog()
+				pubsub.PublishGob(publishCh, routing.ExchangePerilTopic, routing.GameLogSlug+"."+username, routing.GameLog{
+					CurrentTime: time.Now(),
+					Username:    username,
+					Message:     msg,
+				})
+			}
 		case "quit":
 			gamelogic.PrintQuit()
 			return

@@ -69,12 +69,17 @@ func SubscribeJSON[T any](
 		return err
 	}
 
+	err = channel.Qos(10, 0, true)
+	if err != nil {
+		return fmt.Errorf("could not set QoS: %v", err)
+	}
 	ch, err := channel.Consume(queue.Name, "", false, false, false, false, nil)
 	if err != nil {
 		return err
 	}
 
 	go func(c <-chan amqp.Delivery) {
+		defer channel.Close()
 		for msg := range c {
 			var msgBody T
 			json.Unmarshal(msg.Body, &msgBody)
@@ -111,6 +116,10 @@ func SubscribeGob[T any](
 		return err
 	}
 
+	err = channel.Qos(10, 0, true)
+	if err != nil {
+		return fmt.Errorf("could not set QoS: %v", err)
+	}
 	ch, err := channel.Consume(queue.Name, "", false, false, false, false, nil)
 	if err != nil {
 		fmt.Println("ERROR at SubscribeGob:", err)
@@ -118,6 +127,7 @@ func SubscribeGob[T any](
 	}
 
 	go func(c <-chan amqp.Delivery) {
+		defer channel.Close()
 		for msg := range c {
 			var msgBody T
 			msgBody, err := decode[T](msg.Body)
